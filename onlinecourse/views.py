@@ -1,7 +1,7 @@
 from django.shortcuts import render
 from django.http import HttpResponseRedirect
 # <HINT> Import any new Models here
-from .models import Course, Enrollment
+from .models import Course, Enrollment, Question, Choice, Submission
 from django.contrib.auth.models import User
 from django.shortcuts import get_object_or_404, render, redirect
 from django.urls import reverse
@@ -102,8 +102,64 @@ def enroll(request, course_id):
 
     return HttpResponseRedirect(reverse(viewname='onlinecourse:course_details', args=(course.id,)))
 
-
 # <HINT> Create a submit view to create an exam submission record for a course enrollment,
+
+return redirect('onlinecourse:login')
+
+
+def submit(request, course_id):
+    course = get_object_or_404(Course, pk=course_id)
+    user = request.user
+
+    is_enrolled = utils.check_if_enrolled(user, course)
+    if user.is_authenticated:
+        if is_enrolled:
+            enrollment = Enrollment.objects.get(user=user, course=course)
+            submission = Submission.objects.create(enrollment=enrollment)
+
+            submitted_answers = [
+                int(value)
+                for key, value in request.POST.items()
+                if key.startswith('choice')
+            ]
+            submission.choices.add(*submitted_answers)
+
+            return HttpResponseRedirect(reverse(
+                viewname='onlinecourse:show_exam_result',
+                args=(course.id, submission.id,)
+            ))
+
+        return HttpResponseRedirect(reverse(
+            viewname='onlinecourse:enroll',
+            args=(course.id,)
+        ))
+
+    return redirect('onlinecourse:login')
+
+
+def show_exam_result(request, course_id, submission_id):
+    course = get_object_or_404(Course, pk=course_id)
+    submission = get_object_or_404(Submission, pk=submission_id)
+    choices = submission.choices.all()
+
+    total_score, score = 0, 0
+    for question in course.question_set.all():
+        total_score += question.grade
+        if question.is_get_score(choices):
+            score += question.grade
+
+    context = {
+        "course": course,
+        "choices": choices,
+        "grade": int(score / total_score * 100),
+    }
+
+    return render(
+        request,
+        'onlinecourse/exam_result_bootstrap.html',
+        context
+    )
+
 # you may implement it based on following logic:
          # Get user and course object, then get the associated enrollment object created when the user enrolled the course
          # Create a submission object referring to the enrollment
